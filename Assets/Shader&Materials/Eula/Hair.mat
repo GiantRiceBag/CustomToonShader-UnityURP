@@ -23,8 +23,10 @@ Material:
   m_Name: Hair
   m_Shader: {fileID: 4800000, guid: 44fb61076cd38e84a98a3a4d9fedaeb4, type: 3}
   m_ValidKeywords:
+  - _ADDITIONALLIGHT_ON
   - _AMBIENT_ON
   - _HIGHLIGHT_ON
+  - _OUTLINEMODE_NORMAL
   m_InvalidKeywords:
   - HIGHLIGHT_ON
   - _RIMLIGHTBLENDMODE_ADD
@@ -93,6 +95,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SmoothNormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _SpecGlossMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -116,12 +122,15 @@ Material:
     m_Ints: []
     m_Floats:
     - Highlight: 1
+    - _Additionallight: 1
+    - _AdditionallightLevel: 1
     - _AlphaClip: 0
     - _Ambient: 1
     - _Blend: 0
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _ClipRimLightInShadow: 0
     - _ClipThreshold: 0.5
     - _Cull: 2
     - _Cutoff: 0.5
@@ -134,6 +143,7 @@ Material:
     - _GlossyReflections: 0
     - _Highlight: 1
     - _HighlightFeather: 0.1
+    - _HighlightLevel: 0.5
     - _HighlightPower: 30
     - _HighlightStep: 0.334
     - _Metallic: 0
@@ -142,6 +152,7 @@ Material:
     - _Normal: 0
     - _OcclusionStrength: 1
     - _Outline: 0
+    - _OutlineMode: 0
     - _OutlineThickness: 0.0057
     - _OutlineZOffset: 0
     - _Parallax: 0.005
@@ -151,8 +162,10 @@ Material:
     - _RimLightBlendMode: 0
     - _RimLightPower: 30
     - _ShadingFeather: 0.0157
+    - _ShadowLevel: 1
     - _ShadowRamp: 0
     - _ShadowStep: 0.5
+    - _SmoothNormal: 0
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1

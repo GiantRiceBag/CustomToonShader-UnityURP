@@ -19,6 +19,7 @@ Shader "Unlit/CustomToonShader"
         [NoScaleOffset]_ShadowRampMap ("Shadow Ramp Map", 2D) = "white" {}
         [Space(10)]
         _ShadowStep("Shadow Step",Range(0,1)) = 0.5
+        _ShadowLevel("Shadow Level",Range(0,1)) = 1
         _ShadingFeather("Shading Feather",Range(0,1)) = 0.0001
         _ShadingMap("Shading Map",COLOR) = (0.7,0.7,0.7,1)
 
@@ -34,9 +35,16 @@ Shader "Unlit/CustomToonShader"
         _HighlightPower("Highlight Power",Range(0,300)) = 30
 
         [Space(30)]
+        [Header(Additional Lights)]
+        [Space(10)]
+        [Toggle] _Additionallight("Enable Additional lights",FLOAT) = 1
+        _AdditionallightLevel("Additional Light Level",Range(0,1)) = 1
+
+        [Space(30)]
         [Header(Rim Light)]
         [Space(10)]
         [Toggle] _RimLight("Enable RimLight",FLOAT) = 0
+        [Toggle] _ClipRimLightInShadow("Clip Rimlight in Shadow",FLOAT) = 0
         [HDR]_RimLightTint("RimLight Tint",COLOR) = (1,1,1,1)
         _RimLightPower("RimLight Power",Range(0.001,100)) = 30
 
@@ -44,6 +52,9 @@ Shader "Unlit/CustomToonShader"
         [Header(Outline)]
         [Space(10)]
         [Toggle] _Outline("Enable Outline",FLOAT) = 0
+        [KeywordEnum(Normal,Scaling)] _OutlineMode ("Outline Mode",FLOAT) = 0
+        [Toggle] _SmoothNormal("Enable Smooth Normal Map",FLOAT) = 0
+        [NoScaleOffset]_SmoothNormalMap ("Smooth Normal Map", 2D) = "white" {}
         [HDR]_OutlineTint("Outline Tint",COLOR) = (1,1,1,1)
         _OutlineThickness("Outline Thickness",Range(0.001,0.1)) = 0.005
     }
@@ -51,7 +62,7 @@ Shader "Unlit/CustomToonShader"
     {
         Tags{
             "RenderType" = "Opaque" 
-            "Queue" = "AlphaTest+51"
+            "Queue" = "Transparent"
         }
         UsePass "Universal Render Pipeline/Lit/ShadowCaster"
         Pass
@@ -59,7 +70,11 @@ Shader "Unlit/CustomToonShader"
             Tags { 
                 "LightMode" = "UniversalForward"
             }
-            LOD 100
+            Stencil{
+                ref 1
+                Comp Always
+                Pass Replace
+            }
 
             Name "Main"
             Cull Back
@@ -76,10 +91,14 @@ Shader "Unlit/CustomToonShader"
             #pragma shader_feature _MAIN_LIGHT_SHADOWS
             #pragma shader_feature _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma shader_feature _SHADOWS_SOFT
+            #pragma shader_feature _ADDITIONAL_LIGHTS
+            #pragma shader_feature _ADDITIONAL_LIGHT_SHADOWS
 
             #pragma shader_feature _HIGHLIGHT_ON
             #pragma shader_feature _RIMLIGHT_ON
+            #pragma shader_feature _CLIPRIMLIGHTINSHADOW_ON
             #pragma shader_feature _AMBIENT_ON
+            #pragma shader_feature _ADDITIONALLIGHT_ON
             #pragma shader_feature _ALPHACLIP_ON
             #pragma shader_feature _NORMAL_ON
             #pragma shader_feature _SHADOWRAMP_ON
@@ -97,6 +116,7 @@ Shader "Unlit/CustomToonShader"
             SAMPLER(sampler_ShadowRampMap);
 
             float _ShadowStep;
+            float _ShadowLevel;
             float _ShadingFeather;
             float _HighlightPower;
             float _HighlightStep;
@@ -104,6 +124,7 @@ Shader "Unlit/CustomToonShader"
             float _HighlightLevel;
             float _RimLightPower;
             float _ClipThreshold;
+            float _AdditionallightLevel;
 
             float4 _Tint;
             float4 _ShadingMap;
@@ -134,11 +155,17 @@ Shader "Unlit/CustomToonShader"
                     return float4(0,0,0,0);
             }
 
-            float4 CaculateRimLight(vertexOutput data){
+            float4 CaculateRimLight(vertexOutput data,float shadowMask){
                 #if _RIMLIGHT_ON
                     float3 normal = TransformObjectToWorldNormal(data.normalOS);
                     float3 viewDir = normalize(GetWorldSpaceViewDir(data.positionWS));
                     float4 rimCol = pow(1-saturate(dot(normal,viewDir)),_RimLightPower) * _RimLightTint;
+
+                    #if _CLIPRIMLIGHTINSHADOW_ON
+                        shadowMask = step(1,shadowMask);
+                        rimCol *= shadowMask;
+                    #endif
+
                     return rimCol;
                 #endif
                     return float4(0,0,0,0);
@@ -149,6 +176,20 @@ Shader "Unlit/CustomToonShader"
                      return float4(_GlossyEnvironmentColor.xyz,1);
                 #endif
                  return float4(1,1,1,1);
+            }
+
+            float4 GetAdditionalLightsColor(vertexOutput data){
+                float3 col = float3(0,0,0);
+                #if _ADDITIONAL_LIGHTS
+                    #if _ADDITIONALLIGHT_ON
+                        uint lightCount = GetAdditionalLightsCount();
+                        for (uint lightIndex = 0; lightIndex < lightCount; lightIndex++) {
+                            Light light = GetAdditionalLight(lightIndex, data.positionWS, 1);
+                            col += light.color * light.distanceAttenuation * light.shadowAttenuation;
+                        }
+                    #endif
+                #endif
+                return float4(col,1) * _AdditionallightLevel;
             }
 
             vertexOutput vert(appdata i){
@@ -179,15 +220,12 @@ Shader "Unlit/CustomToonShader"
                     shadowMask = smoothstep(_ShadowStep,_ShadowStep + _ShadingFeather,((dot(lightDirection,i.normalWS)+1)/2));
                     shadowMask *= smoothstep(_ShadowStep,_ShadowStep + _ShadingFeather,light.shadowAttenuation);
                 #endif
+                    shadowMask = lerp(shadowMask,1,1-_ShadowLevel);
 
-                #ifdef _ADDITIONAL_LIGHTS
-                        // TODO
-                #endif
-
-                               
                 float4 srcCol = SAMPLE_TEXTURE2D(_MainTex,sampler_MainTex,i.uv) * _Tint * lightColor * GetAmbientColor();
                 float4 highlightCol = CaculateHighlight(shadowMask,light,i);
-                float4 RimLightCol = CaculateRimLight(i);
+                float4 rimLightCol = CaculateRimLight(i,shadowMask);
+                float4 additionalLightsCol = GetAdditionalLightsColor(i); 
 
                 #if _ALPHACLIP_ON
                     clip(srcCol.a - _ClipThreshold);
@@ -195,11 +233,11 @@ Shader "Unlit/CustomToonShader"
 
                 float4 extraCol = float4(0,0,0,1);
                 #if _RIMLIGHT_ON
-                     extraCol += RimLightCol; 
+                     extraCol += rimLightCol; 
                 #endif
-
+                
                 _ShadingMap = lerp(_ShadingMap,float4(1,1,1,1),shadowMask);
-                return srcCol * _ShadingMap + highlightCol + extraCol;
+                return srcCol * _ShadingMap + srcCol * additionalLightsCol + highlightCol + extraCol;
             }
             ENDHLSL
         }
@@ -209,9 +247,11 @@ Shader "Unlit/CustomToonShader"
             Tags{
                 "RenderPipeline" = "UniversalPipeline"
             }
-
+            Stencil{
+                ref 1
+                Comp NotEqual
+            }
             Cull Front
-            Offset 1,1
             ZWrite Off
 
             HLSLPROGRAM
@@ -221,29 +261,40 @@ Shader "Unlit/CustomToonShader"
             #pragma fragment frag
 
             #pragma shader_feature _OUTLINE_ON
+            #pragma shader_feature _SMOOTHNORMAL_ON
+            #pragma multi_compile _OUTLINEMODE_NORMAL _OUTLINEMODE_SCALING
+
+            TEXTURE2D(_SmoothNormalMap);
+            SAMPLER(sampler_SmoothNormalMap);
 
             float _OutlineThickness;
             float4 _OutlineTint;
 
             struct appdata{
                 float4 positionOS : POSITION;
-                float4 normalOS : NORMAL;
                 float4 tangentOS : TANGENT;
+                float4 normalOS : NORMAL;
             };
             struct vertexOutput{
                 float4 positionCS : SV_POSITION;
-                float3 normalWS : TEXCOORD0;
-                float3 positionWS : TEXCOORD1;
             };
 
             vertexOutput vert(appdata i){
                 vertexOutput o;
                 #if _OUTLINE_ON
-                    i.positionOS += i.normalOS * _OutlineThickness;
+                    #if _OUTLINEMODE_NORMAL
+                        #if _SMOOTHNORMAL_ON
+                            // TODO
+                            i.positionOS += i.tangentOS * _OutlineThickness;
+                        #else
+                            i.positionOS += i.normalOS * _OutlineThickness;
+                        #endif
+                    #elif _OUTLINEMODE_SCALING
+                        i.positionOS += i.positionOS * _OutlineThickness;
+                    #endif
                 #endif
+
                 o.positionCS = TransformObjectToHClip(i.positionOS);
-                o.normalWS = TransformObjectToWorldNormal(i.normalOS);
-                o.positionWS = TransformObjectToWorld(i.positionOS.xyz);
 
                 return o;
             }

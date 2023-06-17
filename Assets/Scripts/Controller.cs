@@ -41,7 +41,7 @@ public class Controller : MonoBehaviour
             if (cameraPingpong)
             {
                 Vector3 pos = cameraObj.transform.position;
-                pos.y = Mathf.PingPong(pingpongT, 2);
+                pos.y = Mathf.PingPong(pingpongT, 1.6f);
                 cameraObj.transform.position = pos;
                 pingpongT += Time.deltaTime * 0.2f; 
             }
